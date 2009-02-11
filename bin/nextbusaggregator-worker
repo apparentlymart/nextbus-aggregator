@@ -1,0 +1,26 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use NextBusAggregator::Worker;
+use Getopt::Long;
+
+# FIXME: Support multiple cache and worker addresses
+
+my $cache_server = undef;
+my $job_server = undef;
+
+Getopt::Long::GetOptions(
+    'cache-server=s' => \$cache_server,
+    'job-server=s' => \$job_server,
+);
+
+die "No cache server given" unless $cache_server;
+die "No job server given" unless $job_server;
+
+NextBusAggregator::Worker->run(
+    job_servers => [ $job_server ],
+    cache_servers => [ $cache_server ],
+);
+

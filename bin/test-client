@@ -1,0 +1,35 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use Storable;
+use Gearman::Client;
+use Data::Dumper;
+
+my $client = Gearman::Client->new();
+$client->job_servers('127.0.0.1:7003');
+
+my $func_name = shift;
+my $args = [ @ARGV ];
+
+my $result = $client->do_task($func_name, Storable::nfreeze($args), {
+    uniq => "-",
+    timeout => 10,
+    on_fail => sub {
+        print STDERR "Gearman request failed\n";
+    },
+    on_retry => sub {
+        print STDERR "Retrying Gearman request\n";
+    },
+    on_complete => sub {
+        print STDERR "Gearman request completed successfully\n";
+    },
+});
+if ($result) {
+    my $response = Storable::thaw($$result);
+    print Data::Dumper::Dumper($response);
+}
+else {
+    print "(no response)\n";
+}

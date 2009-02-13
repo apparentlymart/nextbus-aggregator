@@ -77,9 +77,12 @@ sub handle_vehicle_locations {
     fetch_data_multi($requests, sub {
         my $result = shift;
 
+        use Data::Dumper;
+        print Data::Dumper::Dumper($result);
+
         my $ret = [];
         foreach my $list (values %$result) {
-            next unless $list;
+            next unless ref $list eq 'ARRAY';
 
             if ($filter_by_location) {
                 foreach my $vehicle (@$list) {

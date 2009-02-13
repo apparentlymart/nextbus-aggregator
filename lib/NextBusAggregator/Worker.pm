@@ -121,7 +121,7 @@ sub get_vehicle_locations {
 
         my $vehicle = {};
 
-        foreach my $k (qw(id routeTag dirTag lat lon secsSinceReport)) {
+        foreach my $k (qw(id routeTag dirTag lat lon secsSinceReport heading)) {
             $vehicle->{$k} = $elem->getAttribute($k);
         }
 

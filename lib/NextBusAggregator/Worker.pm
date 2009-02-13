@@ -185,7 +185,8 @@ sub _initialize_session {
         _log("Doing session cookie request");
         my $client = Gearman::Client->new(job_servers => $job_servers);
         my $result = $client->do_task("get_session_cookie", "", {
-            uniq => "-"
+            uniq => "-",
+            timeout => 5,
         });
         if ($result) {
             _log("Session cookie request succeeded");

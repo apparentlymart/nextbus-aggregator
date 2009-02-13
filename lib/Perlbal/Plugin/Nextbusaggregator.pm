@@ -156,10 +156,13 @@ sub fetch_data_multi {
 sub return_data {
     my ($pb, $data) = @_;
 
+    my $data_json = $json->encode($data);
+
     my $res_header = Perlbal::HTTPHeaders->new_response(200);
     $res_header->header('Content-Type', 'application/json');
+    $res_header->header('Content-Length', length($data_json));
     $pb->write($res_header->to_string_ref);
-    $pb->write($json->encode($data));
+    $pb->write($data_json);
     $pb->write(sub { $pb->http_response_sent; });
 }
 

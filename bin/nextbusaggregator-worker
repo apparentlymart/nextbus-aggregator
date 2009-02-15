@@ -4,17 +4,20 @@ use strict;
 use warnings;
 
 use NextBusAggregator::Worker;
+use Working::Daemon;
 use Getopt::Long;
 
 # FIXME: Support multiple cache and worker addresses
 
-my $cache_server = undef;
-my $job_server = undef;
-
-Getopt::Long::GetOptions(
-    'cache-server=s' => \$cache_server,
-    'job-server=s' => \$job_server,
+my $daemon = Working::Daemon->new();
+$daemon->name("nextbusaggregator-worker");
+$daemon->standard(
+    'cache-server=s' => undef() => "addr:port of a memcache server",
+    'job-server=s' => undef() => "addr:port of a gearmand server",
 );
+
+my $cache_server = $daemon->options->{'cache-server'};
+my $job_server = $daemon->options->{'job-server'};
 
 die "No cache server given" unless $cache_server;
 die "No job server given" unless $job_server;

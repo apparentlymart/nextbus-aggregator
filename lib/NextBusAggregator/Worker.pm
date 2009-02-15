@@ -28,6 +28,10 @@ sub run {
 
     Carp::croak("Unrecognised options(s): ".join(keys(%opts))) if %opts;
 
+    # TEMP: Make a log file
+    open(LOG, '>>', 'worker.log');
+    print LOG "Opened log file\n";
+
     $cache = Cache::Memcached->new({
         servers => $cache_servers,
     });
@@ -51,6 +55,10 @@ sub run {
     $worker->register_function(get_vehicle_locations => $h->(\&get_vehicle_locations));
     $worker->register_function(get_predictions => $h->(\&get_predictions));
     $worker->register_function(get_session_cookie => $h->(\&get_session_cookie));
+
+    $SIG{INT} = $SIG{TERM} = sub {
+        exit(0);
+    };
 
     _log("Entering job loop");
     $worker->work while 1;
@@ -128,7 +136,7 @@ sub get_vehicle_locations {
         push @$ret, $vehicle;
     }
 
-    $cache->set($cache_key, $ret, 30);
+    $cache->set($cache_key, $ret, @$ret ? 30 : 5);
     return $ret;
 }
 
@@ -178,6 +186,13 @@ sub _fetch {
 sub _initialize_session {
 
     unless (defined $session_cookie) {
+
+        # TEMP: Doing this with gearman doesn't seem to work right,
+        # so for now let's just do it directly.
+        $session_cookie = get_session_cookie();
+        _log("New session cookie is $session_cookie");
+        return;
+
         # Need to go get a session cookie
         # We do this with a nested gearman call so that
         # when the session expires the workers don't
@@ -207,7 +222,8 @@ sub eurl {
 }
 
 sub _log {
-    print STDERR @_, "\n";
+    print LOG @_, "\n";
+    $| = 1;
 }
 
 1;

@@ -1,0 +1,146 @@
+#!/usr/bin/perl
+
+# Script to start and stop all of the necessary gunk to
+# make nextbusaggregator run.
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+use File::Temp;
+use FindBin;
+
+my $bin_dir = $FindBin::Bin;
+
+my $gearmand_port;
+my $memcached_port;
+my $perlbal_port;
+my $worker_count;
+my $daemonize;
+
+GetOptions(
+    "gearmand-port=i" => \$gearmand_port,
+    "memcached-port=i" => \$memcached_port,
+    "perlbal-port=i" => \$perlbal_port,
+    "worker-count=i" => \$worker_count,
+    "daemonize" => \$daemonize,
+) or die "Incorrect arguments";
+
+die "Daemonizing is not currently implemented" if $daemonize;
+
+$perlbal_port ||= 7001;
+$gearmand_port ||= 7003;
+$memcached_port ||= 7004;
+$worker_count ||= 5;
+
+my $pidfile_dir = File::Temp::tempdir(CLEANUP => 1);
+print "Will write pidfiles out to $pidfile_dir\n";
+
+{
+
+    print "starting memcached...";
+
+    my $pidfile = "$pidfile_dir/memcached.pid";
+
+    run("memcached", "-d", "-p", $memcached_port, "-l", "127.0.0.1", "-m", "64", "-P", $pidfile) or abort("Failed to start memcached");
+
+    print "ok\n";
+
+}
+
+{
+
+    print "starting gearmand...";
+
+    my $pidfile = "$pidfile_dir/gearmand.pid";
+
+    run("gearmand", "-d", "--pidfile=$pidfile", "--port=$gearmand_port") or abort("Failed to start gearmand");
+
+    print "ok\n";
+
+}
+
+{
+
+    print "starting $worker_count workers...";
+
+    my $cmd = "$bin_dir/nextbusaggregator-worker";
+
+    for (1 .. $worker_count) {
+        my $pidfile = "$pidfile_dir/worker$_.pid";
+        run($cmd, "--pidfile=$pidfile", "--no-chroot", "--job-server=127.0.0.1:".$gearmand_port, "--cache-server=127.0.0.1:$memcached_port") or abort("Failed to start worker $_");
+    }
+
+    print "ok\n";
+
+}
+
+{
+
+    print "starting perlbal...";
+
+    my $pidfile = "$pidfile_dir/perlbal.pid";
+    my $config_file = "$pidfile_dir/perlbal.conf";
+
+    open(PERLBAL_CONF, '>', $config_file);
+
+print PERLBAL_CONF <<EOT;
+
+server pidfile = $pidfile
+load NextBusAggregator
+
+CREATE SERVICE nextbus
+  SET listen          = 0.0.0.0:$perlbal_port
+  SET role            = web_server
+  SET plugins         = NextBusAggregator
+  NBA_JOB_SERVER 127.0.0.1:$gearmand_port
+ENABLE nextbus
+
+EOT
+
+    close(PERLBAL_CONF);
+
+    run("perlbal", "--config=$config_file", "--daemon") or abort("Failed to start perlbal");
+
+    print "ok\n";
+
+
+}
+
+$SIG{TERM} = $SIG{INT} = sub {
+    kill_everything();
+    exit(0);
+};
+
+# Now just block until we're killed
+while (<STDIN>) {}
+
+sub abort {
+    my ($message) = @_;
+
+    print STDERR $message, "\n";
+    kill_everything();
+}
+
+sub kill_everything {
+    my $signal = 15;
+
+    my @pidfiles = glob "$pidfile_dir/*.pid";
+    my @pids = ();
+    foreach my $pidfile (@pidfiles) {
+        open(PIDFILE, $pidfile) or next;
+        my $pid = <PIDFILE>;
+        push @pids, $pid if $pid;
+    }
+
+    print "Sending everything the KILL signal...";
+    kill $signal, @pids;
+    print "done\n";
+
+}
+
+sub run {
+    my @cmd = @_;
+    print STDERR join(" ", @cmd)."\n";
+    return system(@cmd) ? 0 : 1;
+}

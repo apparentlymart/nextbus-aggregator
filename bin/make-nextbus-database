@@ -1,0 +1,15 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use NextBus;
+
+my $dbname = shift or die "No database name provided";
+my @agencies = @ARGV;
+
+die "No agency keys provided" unless @agencies;
+
+unlink($dbname);
+NextBus->populate_database("dbi:SQLite:$dbname", undef, undef, undef, @agencies);
+

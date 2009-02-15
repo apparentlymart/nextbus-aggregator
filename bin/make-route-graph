@@ -1,0 +1,85 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use NextBus;
+use Data::Dumper;
+
+my $dbname = shift or die "No database name provided";
+my @route_keys = @ARGV;
+
+die "No route name provided" unless @route_keys;
+
+my $nextbus = NextBus->connect("dbi:SQLite:$dbname", undef, undef, undef);
+
+my $agency = $nextbus->resultset('Agency')->search(key => 'sf-muni')->first();
+
+print "strict " if @route_keys == 1;
+print "digraph G {\n";
+
+foreach my $route_key (@route_keys) {
+
+my $route = $agency->routes->search(key => $route_key)->first();
+
+die "No such route $route_key" unless $route;
+
+my $fgcolor = '#'.$route->fgcolor;
+my $bgcolor = '#'.$route->bgcolor;
+
+# If we're showing multiple routes, all nodes are black and only the
+# edges show the line colors.
+my $node_bgcolor = @route_keys > 1 ? 'black' : "$bgcolor";
+my $node_fgcolor = @route_keys > 1 ? 'white' : "$fgcolor";
+
+print "\tnode [shape=rect,style=filled,fillcolor=\"$node_bgcolor\",fontcolor=\"$node_fgcolor\",color=\"$node_bgcolor\"];\n";
+print "\tedge [color=\"$bgcolor\"];\n";
+
+my %seen_stops = ();
+print "\n\t// All stops\n";
+foreach my $direction ($route->directions) {
+    # If we're showing more than one route, only show the primary directions
+    next if @route_keys > 1 && ! $direction->shown_in_ui;
+
+    foreach my $stop ($direction->stops) {
+        my $id = $stop->id;
+        my $title = $stop->title;
+        next if $seen_stops{$id};
+
+        print "\t$id [label=\"$title\"];\n";
+        $seen_stops{$id} = 1;
+    }
+}
+
+# Only show one of each edge per route
+my %seen_edge = ();
+
+foreach my $direction ($route->directions->search({}, {order_by => ['name', 'shown_in_ui DESC']})) {
+    print "\n\t// ".$direction->title."\n";
+
+    # If we're showing more than one route, only show the primary directions
+    next if @route_keys > 1 && ! $direction->shown_in_ui;
+
+    my $style = $direction->shown_in_ui ? "solid" : "dashed";
+    my $color = $direction->shown_in_ui ? "$bgcolor" : "gray";
+
+    my $last_stop = undef;
+    foreach my $direction_stop ($direction->direction_stops->search({}, {order_by => 'seq'})) {
+        my $stop = $direction_stop->stop;
+        if ($last_stop) {
+            my $last_id = $last_stop->id;
+            my $this_id = $stop->id;
+            unless ($seen_edge{"$last_id\t$this_id"}) {
+                print "\t$last_id -> $this_id [style=\"$style\",color=\"$color\"]\n";
+                $seen_edge{"$last_id\t$this_id"} = 1;
+            }
+        }
+        $last_stop = $stop;
+    }
+}
+
+}
+
+print "}\n";
+
+
